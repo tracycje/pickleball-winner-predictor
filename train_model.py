@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 ## Pickleball Winner ML Classification Model
 # 1. Simulating pickleball match data
 # 2. Splitting data: stratified k-fold validation, train-test split 
@@ -204,7 +203,7 @@ print("\n--- Final Test Set Evaluation ---")
 print(classification_report(y_test, y_test_pred, target_names=['Player 1', 'Player 2']))
 
 
-=======
+
 ## Pickleball Winner ML Classification Model
 # 1. Simulating pickleball match data
 # 2. Splitting data: stratified k-fold validation, train-test split 
@@ -410,4 +409,3 @@ print("\n--- Final Test Set Evaluation ---")
 print(classification_report(y_test, y_test_pred, target_names=['Player 1', 'Player 2']))
 
 
->>>>>>> dcaf92f834cb090a5e3bd76c034ad29c432d851e
