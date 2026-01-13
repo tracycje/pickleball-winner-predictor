@@ -25,7 +25,7 @@ Player-related features were represented as differences between the two players 
 ### Target Variable
 The target variable is the match winner. In the simulated dataset, match outcomes were determined using a rule-based probability model. Starting with a base win probability which introduced weightage to players rank and win rate differences (player 1 - player 2) allowing for players with a higher rank/win rate to win the match: 
 
- base_win_prob = 0.5 + (rank_diff * 0.4) + (win_rate_diff * 0.3)
+ `base_win_prob = 0.5 + (rank_diff * 0.4) + (win_rate_diff * 0.3)`
 
 However, to further simulate real-life match dynamics, weather conditions and match duration were introduced as factors that influence winning probability. 
 
@@ -37,15 +37,15 @@ However, to further simulate real-life match dynamics, weather conditions and ma
 **Duration Effects:**
 Longer match durations reduce the impact of skill differences, making matches more competitive. The duration factor is calculated as:
 
-duration_normalized = (duration - 45) / (75 - 45)
+`duration_normalized = (duration - 45) / (75 - 45)`
 
-duration_factor = 1.0 - (duration_normalized * 0.4)
+`duration_factor = 1.0 - (duration_normalized * 0.4)`
 
 This means that a 45-minute match has no duration effect (duration_factor = 1.0), while a 75-minute match reduces skill impact by up to 40% (duration_factor = 0.6), effectively narrowing the skill gap between players.
 
 **The final winning probability formula is:**
 
-win_prob = 0.5 + (base_win_prob - 0.5) * weather_factor * duration_factor
+`win_prob = 0.5 + (base_win_prob - 0.5) * weather_factor * duration_factor`
  
 
 
