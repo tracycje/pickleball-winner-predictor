@@ -20,14 +20,34 @@ Pickleball dataset was simulated for 200 matches along with player attributes an
 - match duration (between 45 and 75 minutes) 
 - winner for each match
 
-To simplify modeling, player-related features were represented as differences between the two players (e.g. rank difference, win rate difference).
+Player-related features were represented as differences between the two players (e.g. rank difference, win rate difference).
 
 ### Target Variable
-The target variable is the match winner. In the simulated dataset, match outcomes were determined using a rule-based probability model that neutralizes both players’ chances and then applies weighted differences in player attributes:
+The target variable is the match winner. In the simulated dataset, match outcomes were determined using a rule-based probability model. Starting with a base win probability which introduced weightage to players rank and win rate differences (player 1 - player 2) allowing for players with a higher rank/win rate to win the match: 
 
- winning probability = 0.5 + (rank_diff*0.4) + (win_rate_diff*0.3)
+ base_win_prob = 0.5 + (rank_diff * 0.4) + (win_rate_diff * 0.3)
 
---> If the stats were effectively equal then it should be a 50/50 probability between both players to win the match. (but then I cannot gurantee this during prediction because lol it learns from the trained dataset and if there is no equal stats = no way for the model to learn that it's supposed to be a coin flip)
+However, to further simulate real-life match dynamics, weather conditions and match duration were introduced as factors that influence winning probability. 
+
+**Weather Effects:**
+- Windy conditions: A 50% reduction in skill advantage is applied (weather_factor = 0.5), making matches more unpredictable
+- Cloudy conditions: A 10% increase in skill advantage is applied (weather_factor = 1.1), favoring the better player
+- Sunny/Indoor conditions: No effect (weather_factor = 1.0)
+
+**Duration Effects:**
+Longer match durations reduce the impact of skill differences, making matches more competitive. The duration factor is calculated as:
+
+duration_normalized = (duration - 45) / (75 - 45)
+
+duration_factor = 1.0 - (duration_normalized * 0.4)
+
+This means that a 45-minute match has no duration effect (duration_factor = 1.0), while a 75-minute match reduces skill impact by up to 40% (duration_factor = 0.6), effectively narrowing the skill gap between players.
+
+**The final winning probability formula is:**
+
+win_prob = 0.5 + (base_win_prob - 0.5) * weather_factor * duration_factor
+ 
+
 
 ## Model Architecture 
 
@@ -44,7 +64,7 @@ A stratified K-fold cross validation with 5 splits (each fold had 106/160 matche
 ### Evaluation
 The final pipeline was trained on the full training set and evaluated on the hold-out test set. The model outputs the prediction of the final winner and probability of winning between both players. 
 
-Model performance was assesed throigh a confusion matrix, ROC-AUC curve and score, as well as a classification report (precision, recall, f1-score, accuracy) was gernerated. 
+Model performance was assesed through a confusion matrix, ROC-AUC curve and score, as well as a classification report (precision, recall, f1-score, accuracy) was generated. 
 
 ---
 

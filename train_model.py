@@ -3,10 +3,9 @@
 # 2. Splitting data: stratified k-fold validation, train-test split 
 # 3. Feature engineering: player stats, match conditions
 # 4. Pipeline: preprocessing(Scaling, Feature Selection), model training
-# 5. Model evaluation: accuracy, precision, recall, F1-score
-# 6. Hyperparameter tuning: Grid Search, Random Search
-# 7. Select the best model based on evaluation metrics
-# 8. Final model evaluation and saving 
+# 5. Model fitting and predicting on hold-out test set.
+# 6. Model evaluation: classification report, confusion matrix, ROC-AUC curve
+# 7. Final model evaluation and saving 
 
 # Install necessary libraries
 # !pip install numpy pandas matplotlib scikit-learn
@@ -56,16 +55,35 @@ def generate_pickleball_data(num_matches=200):
         # Check if stats are effectively equal (within tolerance)
         if abs(rank_diff) < 0.01 and abs(win_rate_diff) < 0.01:
             # Equal stats: fair 50/50 coin flip using np.random.choice for true fairness
-            winner = np.random.choice(['Player 1', 'Player 2'])   # !!! STILL UNSURE WHY IT WOULD STILL PREFER PLAYER 1 (maybe the way that it's been trained?)
+            winner = np.random.choice(['Player 1', 'Player 2'])
         else:
-            # Different stats: calculate win probability based on differences
+            # Different stats: calculate base win probability based on differences
             # This gives Player 1's win probability
-            win_prob = 0.5 + (rank_diff * 0.4) + (win_rate_diff * 0.3)
+            base_win_prob = 0.5 + (rank_diff * 0.4) + (win_rate_diff * 0.3)
+            
+            # Apply weather effects: windy conditions add unpredictability
+            # Windy weather reduces the influence of skill differences (moves prob closer to 0.5)
+            weather_factor = 1.0  # default: no weather effect
+            if weather == 'windy':
+                weather_factor = 0.5  # windy reduces skill advantage by 50%
+            elif weather == 'cloudy':
+                weather_factor = 1.1  # cloudy increases skill advantage by 10%
+            # sunny and indoor_aircon have no effect (weather_factor = 1.0)
+            
+            # Apply duration effects: longer matches are more competitive
+            # Longer matches reduce skill difference impact (moves prob closer to 0.5)
+            # Duration range: 45-75 minutes, normalize to 0-1 scale
+            duration_normalized = (duration - 45) / (75 - 45)  # 0 to 1
+            duration_factor = 1.0 - (duration_normalized * 0.4)  # longer matches reduce skill impact by up to 40%
+            
+            # Apply modifiers: move win_prob closer to 0.5 based on weather and duration
+            # Formula: adjusted_prob = 0.5 + (base_win_prob - 0.5) * weather_factor * duration_factor
+            win_prob = 0.5 + (base_win_prob - 0.5) * weather_factor * duration_factor
             win_prob = max(0.01, min(0.99, win_prob))  # capping between 1% to 99%
             
             # if P1 rank > P2 rank --> positive value --> higher win prob for P1
             # if P1 rank < P2 rank --> negative value --> lower win prob for P1
-            # *0.4 controls the influence of rank diff on win probability
+            # Weather and duration factors reduce the skill difference impact
             
             # Use random choice with probabilities for more accurate distribution
             winner = np.random.choice(['Player 1', 'Player 2'], p=[win_prob, 1 - win_prob]) 
@@ -159,7 +177,7 @@ for fold, (train_index, val_index) in enumerate(skf.split(x_temp, y_temp)):
     print(f"Validation set: {len(x_val)} matches")
 
 # Evaluation based on CV
-cv_scores = cross_val_score(logreg_pipe, x_train, y_train, cv=skf, scoring='accuracy')
+cv_scores = cross_val_score(logreg_pipe, x_temp, y_temp, cv=skf, scoring='accuracy')
 print(f"\nScores for each fold: {cv_scores.round(4)} \
       \nMean CV Accuracy: {cv_scores.mean():.4f}")
 
@@ -171,9 +189,16 @@ logreg_pipe.fit(x_temp, y_temp)
 # Saving trained pipeline 
 joblib.dump(logreg_pipe, "pickleball_winner_model.joblib")
 
+# Finding positive class index for ROC-AUC Curve
+classes = list(logreg_pipe.named_steps["logisticregression"].classes_)   # get the model's class order
+print(classes)
+pos_class = "Player 2"                                                   # finding index of positive class
+pos_idx = classes.index(pos_class)
+
 # Prdicting winner and probabilities on hold-out test set 
-y_test_prob = logreg_pipe.predict_proba(x_test)[:,1]
-y_test_pred = logreg_pipe.predict(x_test)
+y_test_prob = logreg_pipe.predict_proba(x_test)  # returns 2D array with probabilities for each class
+y_test_prob_pos = y_test_prob[:, pos_idx]        # extracting probabilities for positive class
+y_test_pred = logreg_pipe.predict(x_test)        # predicting winner
 
 
 ### EVALUATION ON FINAL TEST SET ###
@@ -187,16 +212,23 @@ labels = ['Player 1', 'Player 2']
 cm = confusion_matrix(y_test, y_test_pred, labels=labels)
 display = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=labels)
 display.plot()
+plt.title('Confusion Matrix')
+plt.show()
 
 # ROC-AUC Curve
 le = LabelEncoder()
-y_temp_bin = le.fit_transform(y_temp)    # converting labels to binary 
+y_temp_bin = le.fit_transform(y_test)    # converting labels to binary 
 y_test_bin = le.transform(y_test)
-auc_score = roc_auc_score(y_test, y_test_prob)
+print(le.classes_)  # should match ['Player 1', 'Player 2']
+
+auc_score = roc_auc_score(y_test_bin, y_test_prob_pos)
 print(f"\nROC-AUC Score on Test Set: {auc_score:.4f}")
 display_roc = RocCurveDisplay.from_predictions(y_test, 
-                                               y_test_prob,
+                                               y_test_prob_pos,
                                                pos_label='Player 2')
+display_roc.plot()
+plt.title(f'ROC Curve (AUC = {auc_score:.4f})')
+plt.show()
                                         
 
 print("\n--- Final Test Set Evaluation ---")
@@ -260,18 +292,37 @@ def generate_pickleball_data(num_matches=200):
         win_rate_diff = p1_win_rate - p2_win_rate
         
         # Check if stats are effectively equal (within tolerance)
-        if abs(rank_diff) < 0.01 and abs(win_rate_diff) < 0.01:
+        if abs(rank_diff) < 0.01 and abs(win_rate_diff) < 0.01:   # when there is no difference basically
             # Equal stats: fair 50/50 coin flip using np.random.choice for true fairness
             winner = np.random.choice(['Player 1', 'Player 2'])
         else:
-            # Different stats: calculate win probability based on differences
+            # Different stats: calculate base win probability based on differences
             # This gives Player 1's win probability
-            win_prob = 0.5 + (rank_diff * 0.4) + (win_rate_diff * 0.3)
+            base_win_prob = 0.5 + (rank_diff * 0.4) + (win_rate_diff * 0.3)
+            
+            # Apply weather effects: windy conditions add unpredictability
+            # Windy weather reduces the influence of skill differences (moves prob closer to 0.5)
+            weather_factor = 1.0  # default: no weather effect
+            if weather == 'windy':
+                weather_factor = 0.5  # windy reduces skill advantage by 50%
+            elif weather == 'cloudy':
+                weather_factor = 1.1  # cloudy increases skill advantage by 10%
+            # sunny and indoor_aircon have no effect (weather_factor = 1.0)
+            
+            # Apply duration effects: longer matches are more competitive
+            # Longer matches reduce skill difference impact (moves prob closer to 0.5)
+            # Duration range: 45-75 minutes, normalize to 0-1 scale
+            duration_normalized = (duration - 45) / (75 - 45)  # 0 to 1
+            duration_factor = 1.0 - (duration_normalized * 0.4)  # longer matches reduce skill impact by up to 40%
+            
+            # Apply modifiers: move win_prob closer to 0.5 based on weather and duration
+            # Formula: adjusted_prob = 0.5 + (base_win_prob - 0.5) * weather_factor * duration_factor
+            win_prob = 0.5 + (base_win_prob - 0.5) * weather_factor * duration_factor
             win_prob = max(0.01, min(0.99, win_prob))  # capping between 1% to 99%
             
             # if P1 rank > P2 rank --> positive value --> higher win prob for P1
             # if P1 rank < P2 rank --> negative value --> lower win prob for P1
-            # *0.4 controls the influence of rank diff on win probability
+            # Weather and duration factors reduce the skill difference impact
             
             # Use random choice with probabilities for more accurate distribution
             winner = np.random.choice(['Player 1', 'Player 2'], p=[win_prob, 1 - win_prob]) 
